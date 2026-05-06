@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BELLARA PROXY | AUTH</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        :root { --neon: #00f2ff; --bg: #050505; --glass: rgba(255, 255, 255, 0.03); }
+        * { box-sizing: border-box; }
+        body { 
+            background: var(--bg); 
+            background-image: radial-gradient(circle at center, #001a1d 0%, #050505 100%);
+            color: #fff; font-family: 'Segoe UI', sans-serif; 
+            height: 100vh; display: flex; justify-content: center; align-items: center; 
+            margin: 0; overflow: hidden;
+        }
+
+        .glass-card { 
+            background: var(--glass); 
+            backdrop-filter: blur(20px); 
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 242, 255, 0.2); 
+            padding: 40px 30px; border-radius: 25px; 
+            width: 340px; text-align: center; 
+            box-shadow: 0 0 40px rgba(0, 242, 255, 0.1); 
+            animation: fadeIn 1.2s ease-out;
+        }
+
+        .neon-title { 
+            font-size: 24px; font-weight: 800; letter-spacing: 2px;
+            color: var(--neon); text-shadow: 0 0 15px var(--neon);
+            margin-bottom: 5px; text-transform: uppercase;
+        }
+
+        .hwid-tag { font-size: 10px; color: #666; margin-bottom: 25px; display: block; }
+
+        input { 
+            background: rgba(0,0,0,0.5); border: 1px solid rgba(0, 242, 255, 0.4); 
+            color: #fff; padding: 14px; width: 100%; border-radius: 12px; 
+            margin-bottom: 20px; text-align: center; outline: none;
+            transition: 0.3s;
+        }
+        input:focus { border-color: var(--neon); box-shadow: 0 0 10px rgba(0, 242, 255, 0.3); }
+
+        button { 
+            background: var(--neon); border: none; padding: 14px; 
+            border-radius: 12px; color: #000; font-weight: bold; 
+            cursor: pointer; transition: 0.4s; width: 100%; 
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+        button:hover { transform: scale(1.03); box-shadow: 0 0 25px var(--neon); }
+
+        #info-panel { 
+            margin-top: 25px; display: none; text-align: left; 
+            font-size: 14px; border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 20px; animation: slideIn 0.5s ease;
+        }
+
+        .data-row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .label { color: #888; }
+        .val { color: var(--neon); font-weight: bold; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+    <div class="glass-card">
+        <div class="neon-title">BELLARA X PROXY | AUTH</div>
+        <span class="hwid-tag">ID: <span id="hwid-display">LOADING...</span></span>
+        
+        <div id="auth-form">
+            <input type="text" id="licenseKey" placeholder="PASTE LICENSE KEY">
+            <button onclick="handleActivation()">ACTIVATE DEVICE</button>
+        </div>
+
+        <div id="info-panel">
+            <div class="data-row">
+                <span class="label">Product:</span>
+                <span id="prod-name" class="val">---</span>
+            </div>
+            <div class="data-row">
+                <span class="label">Time Left:</span>
+                <span id="time-left" class="val">---</span>
+            </div>
+            <div class="data-row">
+                <span class="label">Device Limit:</span>
+                <span id="dev-limit" class="val">---</span>
+            </div>
+            <p style="color: #00ff00; font-size: 12px; margin-top: 15px;">● SYSTEM FULLY AUTHORIZED</p>
+            <button onclick="logout()" style="background:none; color:#ff4444; border:1px solid #ff4444; font-size:10px; padding:5px; margin-top:10px; box-shadow:none;">UNLINK DEVICE</button>
+        </div>
+        <p id="status-msg" style="font-size: 12px; margin-top: 15px;"></p>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBOvSMSs5NRMqQ_FJV20jquD_wb3103k50",
+            authDomain: "bellara-x-aim.firebaseapp.com",
+            databaseURL: "https://bellara-x-aim-default-rtdb.firebaseio.com",
+            projectId: "bellara-x-aim",
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Unique HWID Generation
+        const myHWID = btoa(navigator.userAgent).substring(10, 26).toUpperCase();
+        document.getElementById('hwid-display').innerText = myHWID;
+
+        // CHECK STORAGE ON LOAD
+        window.onload = function() {
+            const savedKey = localStorage.getItem('bellara_key');
+            if (savedKey) {
+                document.getElementById('licenseKey').value = savedKey;
+                handleActivation(true); // Auto-check if key is still valid
+            }
+        };
+
+        function handleActivation(isAuto = false) {
+            const key = document.getElementById('licenseKey').value;
+            if (!key) return;
+
+            db.ref('licenses/' + key).once('value', snap => {
+                if(!snap.exists()) {
+                    localStorage.removeItem('bellara_key');
+                    if(!isAuto) alert("Invalid Key!");
+                    return;
+                }
+
+                const data = snap.val();
+                let devices = data.devices || [];
+
+                if (devices.includes(myHWID)) {
+                    showAuthorizedUI(data, key);
+                } 
+                else if (data.usedDevices < data.limit) {
+                    if(devices[0] === "EMPTY") devices = [];
+                    devices.push(myHWID);
+                    db.ref('licenses/' + key).update({
+                        devices: devices,
+                        usedDevices: data.usedDevices + 1
+                    }).then(() => showAuthorizedUI(data, key));
+                } else {
+                    document.getElementById('status-msg').innerText = "DEVICE LIMIT REACHED!";
+                    document.getElementById('status-msg').style.color = "red";
+                }
+            });
+        }
+
+        function showAuthorizedUI(data, key) {
+            // Store key in phone storage
+            localStorage.setItem('bellara_key', key);
+            
+            document.getElementById('auth-form').style.display = "none";
+            document.getElementById('info-panel').style.display = "block";
+            document.getElementById('prod-name').innerText = data.product || "Brutal V19";
+            document.getElementById('dev-limit').innerText = `${data.usedDevices} / ${data.limit === 999 ? '∞' : data.limit}`;
+            
+            const hoursLeft = Math.round((data.expiry - Date.now()) / 3600000);
+            document.getElementById('time-left').innerText = hoursLeft > 0 ? hoursLeft + " Hours" : "Expired";
+        }
+
+        function logout() {
+            localStorage.removeItem('bellara_key');
+            location.reload();
+        }
+    </script>
+</body>
+</html>
